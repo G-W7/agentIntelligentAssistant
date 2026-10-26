@@ -1,0 +1,38 @@
+[project]
+name = "agent-assistant"
+version = "0.1.0"
+description = "多 Agent 协作 + RAG + 联网搜索的企业级智能助手"
+requires-python = ">=3.13"
+dependencies = [
+    # Web 框架
+    "fastapi>=0.148.0",
+    "uvicorn>=0.54.0",
+    "python-multipart>=0.0.12",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    # 前端
+    "gradio>=5.0.0",
+    "httpx>=0.27.0",
+    # Agent 编排
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langgraph>=0.2.0",
+    # 存储
+    "pymilvus>=2.4.0",
+    "psycopg2-binary>=2.9.10",
+    # 工具
+    "tavily-python>=0.5.0",
+    "pypdf>=5.0.0",
+]
+
+[project.optional-dependencies]
+# EMBEDDING_PROVIDER=huggingface 时安装：uv sync --extra huggingface
+huggingface = [
+    "langchain-huggingface>=0.1.0",
+    "sentence-transformers>=3.0.0",
+]
+# EMBEDDING_PROVIDER=dashscope 时安装：uv sync --extra dashscope
+dashscope = [
+    "dashscope>=1.20.0",
+]
