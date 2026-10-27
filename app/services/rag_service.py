@@ -82,13 +82,13 @@ def chunk_segments(segments: list[TextSegment]) -> list[dict]:
 
 
 def embed_documents(texts: list[str]) -> list[list[float]]:
-    """批量向量化：按 embedding_batch_size 分批调用 Embedding 模型，避免单次请求过大。"""
+    """批量向量化：按 dashscope_batch_size 分批调用 Embedding 模型，避免单次请求过大。"""
     if not texts:
         return []
     settings = get_settings()
     embeddings = get_embeddings()
     vectors: list[list[float]] = []
-    step = settings.embedding_batch_size
+    step = settings.dashscope_batch_size
     for start in range(0, len(texts), step):
         vectors.extend(embeddings.embed_documents(texts[start : start + step]))
     return vectors

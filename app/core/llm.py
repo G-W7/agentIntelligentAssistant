@@ -91,40 +91,25 @@ def get_chat_model() -> Any:
     return ChatOpenAI(
         model=settings.chat_model,
         temperature=settings.temperature,
-        api_key=settings.openai_api_key or None,
-        base_url=settings.openai_base_url or None,
+        api_key=settings.deepseek_api_key or None,
+        base_url=settings.deepseek_base_url or None,
     )
 
 
 @lru_cache
 def get_embeddings() -> Any:
-    """构造并缓存 Embedding 模型单例。
+    """构造并缓存千问 DashScope Embedding 单例。
 
-    按 embedding_provider 配置选择：
-    huggingface → 本地 HuggingFaceEmbeddings（默认 bge-m3）；
-    dashscope   → 千问 TextEmbedding（支持自定义网关）；
-    其他        → OpenAIEmbeddings（维度须与 Milvus collection 一致）。
+    维度须与 Milvus collection 一致（EMBEDDING_DIMENSIONS）。
     """
     settings = get_settings()
 
-    if settings.embedding_provider == "huggingface":
-        from langchain_huggingface import HuggingFaceEmbeddings
+    if not settings.dashscope_api_key:
+        raise RuntimeError("未配置 DASHSCOPE_API_KEY，无法初始化 Embedding 模型")
 
-        return HuggingFaceEmbeddings(model_name=settings.hf_embedding_model)
-
-    if settings.embedding_provider == "dashscope":
-        return DashScopeEmbeddings(
-            model=settings.embedding_model,
-            api_key=settings.dashscope_api_key,
-            base_url=settings.dashscope_base_url,
-            batch_size=settings.dashscope_batch_size,
-        )
-
-    from langchain_openai import OpenAIEmbeddings
-
-    return OpenAIEmbeddings(
+    return DashScopeEmbeddings(
         model=settings.embedding_model,
-        dimensions=settings.embedding_dimensions,
-        api_key=settings.openai_api_key or None,
-        base_url=settings.openai_base_url or None,
+        api_key=settings.dashscope_api_key,
+        base_url=settings.dashscope_base_url,
+        batch_size=settings.dashscope_batch_size,
     )

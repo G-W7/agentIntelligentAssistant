@@ -25,18 +25,15 @@ class Settings(BaseSettings):
 
     # LLM
     deepseek_api_key: str = ""
-    openai_base_url: str | None = None
-    chat_model: str = "gpt-4o-mini"
+    deepseek_base_url: str = "https://api.deepseek.com"
+    chat_model: str = ""
     temperature: float = 0.2
 
-    # Embedding：维度必须与 Milvus collection 一致，改动后需重建 collection
-    embedding_provider: str = "openai"  # openai | huggingface | dashscope
-    embedding_model: str = "text-embedding-3-large"
+    # Embedding：千问 DashScope，维度必须与 Milvus collection 一致，改动后需重建 collection
+    embedding_model: str = "qwen3.7-text-embedding-flash"
     embedding_dimensions: int = 1024
-    hf_embedding_model: str = "BAAI/bge-m3"
-    embedding_batch_size: int = 32
 
-    # DashScope / 千问 embedding（EMBEDDING_PROVIDER=dashscope 时生效）
+    # DashScope / 千问 embedding
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/api/v1"
     # 同步接口单批上限 25，v3/v4 建议 10 以内
@@ -49,8 +46,8 @@ class Settings(BaseSettings):
     # PostgreSQL
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_user: str = "agent"
-    postgres_password: str = "agent"
+    postgres_user: str = "postgres"
+    postgres_password: str = ""
     postgres_db: str = "agent_assistant"
     postgres_pool_size: int = 8
 
@@ -70,6 +67,8 @@ class Settings(BaseSettings):
     history_window: int = 20
 
     # 前端 / 跨域
+    #TODO: 可能和attu端口冲突
+    backend_base_url: str = "http://127.0.0.1:8000"
     cors_origins: str = "*"
 
     @property
