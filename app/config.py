@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5432
     postgres_user: str = "postgres"
     postgres_password: str = ""
-    postgres_db: str = "agent_assistant"
+    postgres_db: str = "postgres"
     postgres_pool_size: int = 8
 
     # Milvus
@@ -67,7 +67,6 @@ class Settings(BaseSettings):
     history_window: int = 20
 
     # 前端 / 跨域
-    #TODO: 可能和attu端口冲突
     backend_base_url: str = "http://127.0.0.1:8000"
     cors_origins: str = "*"
 

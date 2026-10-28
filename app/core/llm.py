@@ -80,10 +80,11 @@ class DashScopeEmbeddings:
 
 @lru_cache
 def get_chat_model() -> Any:
-    """构造并缓存 ChatOpenAI 对话模型单例。
+    """构造并缓存 deepseek 对话模型单例。
 
-    支持自定义 base_url 以走代理或 OpenAI 兼容端点；
-    延迟导入 langchain_openai，缺少依赖时不影响应用启动。
+    deepseek-flash 默认开启思考模式，思考模式下不支持 tool_choice=required
+    与 json_schema 结构化输出（会返回 400）。这里默认关闭思考模式，
+    以获得更低延迟并恢复 temperature 等采样参数的效果。
     """
     from langchain_openai import ChatOpenAI
 
@@ -93,6 +94,7 @@ def get_chat_model() -> Any:
         temperature=settings.temperature,
         api_key=settings.deepseek_api_key or None,
         base_url=settings.deepseek_base_url or None,
+        extra_body={"thinking": {"type": "disabled"}},
     )
 
 

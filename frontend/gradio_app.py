@@ -182,7 +182,7 @@ def check_health() -> dict:
         return {"status": "unreachable", "backend": BACKEND, "error": str(exc)}
 
 
-with gr.Blocks(title="Agent 智能助手", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="Agent 智能助手") as demo:
     gr.Markdown(
         "# 🤖 Agent 智能助手\n"
         "多 Agent 协作（主管-工作者）· 本地知识库 RAG · Tavily 联网搜索"
@@ -191,7 +191,7 @@ with gr.Blocks(title="Agent 智能助手", theme=gr.themes.Soft()) as demo:
     with gr.Row():
         with gr.Column(scale=3):
             session_id = gr.Textbox(label="会话 ID", value="default")
-            chatbot = gr.Chatbot(type="messages", label="对话", height=520)
+            chatbot = gr.Chatbot(label="对话", height=520)
             with gr.Row():
                 message = gr.Textbox(
                     label="消息", scale=5, placeholder="输入问题后回车发送…"
@@ -229,4 +229,9 @@ with gr.Blocks(title="Agent 智能助手", theme=gr.themes.Soft()) as demo:
 
 if __name__ == "__main__":
     print(f"后端地址：{BACKEND}")
-    demo.launch(server_name="127.0.0.1", server_port=7860, inbrowser=True)
+    demo.launch(
+        server_name="127.0.0.1",
+        server_port=7860,
+        inbrowser=True,
+        theme=gr.themes.Soft(),
+    )

@@ -83,7 +83,9 @@ async def router_node(state: AgentState) -> dict[str, Any]:
     只负责路由决策，不回答问题本身；结果写入 state 的 route / route_reason。
     """
     query = last_human_text(state["messages"])
-    structured = get_chat_model().with_structured_output(RouteDecision)
+    structured = get_chat_model().with_structured_output(
+        RouteDecision, method="function_calling"
+    )
     decision = await structured.ainvoke(
         [
             SystemMessage(content=ROUTER_SYSTEM_PROMPT),
