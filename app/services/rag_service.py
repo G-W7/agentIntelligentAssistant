@@ -33,28 +33,50 @@ class ChunkHit:
 
 
 def extract_segments(path: Path) -> list[TextSegment]:
-    """文档解析：PDF 用 pypdf 逐页提取文本（保留页码），md/txt 整体读为一段。
+    """文档解析：使用 MinerU API 将文档转为高质量 Markdown。
 
-    不支持的扩展名抛 ValueError；空文本页 / 空文件被过滤掉。
+    支持 PDF、图片、DOCX、PPTX、XLSX、md/txt 等格式。
+    MinerU 会保留文档结构、公式（LaTeX）和表格。
     """
+    settings = get_settings()
+
+    if not settings.mineru_token:
+        raise ValueError("未配置 MINERU_TOKEN，无法使用 MinerU 解析文档")
+
+    from mineru import MinerU
+
     suffix = path.suffix.lower()
-
-    if suffix == ".pdf":
-        from pypdf import PdfReader
-
-        reader = PdfReader(str(path))
-        segments: list[TextSegment] = []
-        for number, page in enumerate(reader.pages, start=1):
-            text = (page.extract_text() or "").strip()
-            if text:
-                segments.append(TextSegment(text=text, page=number))
-        return segments
 
     if suffix in {".md", ".markdown", ".txt"}:
         text = path.read_text(encoding="utf-8", errors="replace").strip()
         return [TextSegment(text=text)] if text else []
 
-    raise ValueError(f"不支持的文件类型：{suffix}")
+    try:
+        with MinerU(settings.mineru_token) as client:
+            result = client.extract(str(path))
+    except Exception as e:
+        logger.error("MinerU 解析文件 %s 异常：%s", path.name, e)
+        raise ValueError(f"MinerU 文档解析失败：{e}") from e
+
+    if result.state != "done" or not result.markdown:
+        logger.warning("MinerU 解析文件 %s 未成功，state=%s", path.name, result.state)
+        return []
+
+    markdown = result.markdown.strip()
+    if not markdown:
+        return []
+
+    segments: list[TextSegment] = []
+    pages = markdown.split("\n\n---\n\n")
+    if len(pages) > 1:
+        for number, page_text in enumerate(pages, start=1):
+            page_text = page_text.strip()
+            if page_text:
+                segments.append(TextSegment(text=page_text, page=number))
+    else:
+        segments.append(TextSegment(text=markdown))
+
+    return segments
 
 
 def chunk_segments(segments: list[TextSegment]) -> list[dict]:

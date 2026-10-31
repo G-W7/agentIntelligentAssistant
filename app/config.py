@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # 知识库文件扩展名白名单，上传校验时使用
-ALLOWED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".md", ".markdown", ".txt", ".docx", ".pptx", ".xlsx", ".png", ".jpg", ".jpeg"}
 
 
 class Settings(BaseSettings):
@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # 联网搜索
     tavily_api_key: str = ""
     tavily_max_results: int = 5
+
+    # MinerU 文档解析
+    mineru_token: str = ""
 
     # PostgreSQL
     postgres_host: str = "localhost"

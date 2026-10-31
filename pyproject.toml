@@ -24,7 +24,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     # 工具
     "tavily-python>=0.5.0",
-    "pypdf>=5.0.0",
+    "mineru-open-sdk>=0.2.0",
 ]
 
 [project.optional-dependencies]
