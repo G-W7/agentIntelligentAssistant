@@ -24,6 +24,17 @@ def get_client() -> Any:
     return _client
 
 
+def close_client() -> None:
+    """关闭 MilvusClient 连接，应用关闭时由 lifespan 调用。"""
+    global _client
+    if _client is not None:
+        try:
+            _client.close()
+        except Exception:
+            logger.warning("Milvus 连接关闭异常", exc_info=True)
+        _client = None
+
+
 def init_collection() -> bool:
     """collection 不存在时按文档 schema 创建。已存在则跳过。"""
     from pymilvus import DataType

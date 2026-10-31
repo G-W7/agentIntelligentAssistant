@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints import router
 from app.config import get_settings
+from app.core import observability
 from app.db import milvus_client, pg_client
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("Milvus 初始化失败，RAG 检索将不可用", exc_info=True)
 
+    observability.init_langfuse()
+
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     yield
+    observability.shutdown_langfuse()
     pg_client.close_db()
+    milvus_client.close_client()
 
 
 settings = get_settings()

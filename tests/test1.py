@@ -1,6 +1,20 @@
+import asyncio
+import logging
+from typing import Any
 
-from app.core.llm import get_embeddings
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
-emb = get_embeddings()
-print("单条:", len(emb.embed_query("测试一下")))
-print("批量:", [len(v) for v in emb.embed_documents(["第一段", "第二段", "第三段"])])
+from app.config import get_settings
+from app.core.agent_graph import get_graph
+from app.db import pg_client
+from frontend.gradio_app import session_id
+
+pg_client.init_db()
+_ROLE_CLASSES = {"user": HumanMessage, "assistant": AIMessage}
+session_id = "default"
+rows = pg_client.list_messages(session_id, limit=get_settings().history_window)
+print(rows)
+messages: list[BaseMessage] = []
+for row in rows:
+    message_class = _ROLE_CLASSES.get(row["role"])
+    print(message_class)

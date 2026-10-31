@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from app.config import get_settings
 from app.core.agent_graph import get_graph
+from app.core.observability import build_callbacks
 from app.db import pg_client
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,16 @@ async def chat(session_id: str, message: str) -> dict[str, Any]:
     5. 返回结构化结果供路由层组装 ChatResponse。
     """
     graph = get_graph()
-    config = {"configurable": {"thread_id": session_id}}
+    config = {
+        "configurable": {"thread_id": session_id},
+        # Langfuse 未启用时 build_callbacks() 返回 []，不影响正常执行
+        "callbacks": build_callbacks(),
+        "metadata": {
+            # 以下三个 key 是 Langfuse v3 约定的字段名，会被自动识别为 trace 属性
+            "langfuse_session_id": session_id,
+            "langfuse_tags": ["agent-assistant"],
+        },
+    }
 
     if session_id in _warmed_sessions:
         seed: list[BaseMessage] = []

@@ -38,3 +38,8 @@ dashscope = [
     "dashscope>=1.20.0",
     "aiohttp>=3.9.0",
 ]
+# 可观测性追踪，安装：uv sync --extra langfuse
+# 注意：<5.0.0 是因为 SDK v5 要求 langchain-core>=1，本项目仍用 0.3.x
+langfuse = [
+    "langfuse>=3.0.0,<5.0.0",
+]

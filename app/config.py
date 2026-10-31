@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     # LLM
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com"
-    chat_model: str = ""
+    # 默认对齐 .env；deepseek-flash 的思考模式在 llm.py 中已显式关闭
+    chat_model: str = "deepseek-flash"
     temperature: float = 0.2
 
     # Embedding：千问 DashScope，维度必须与 Milvus collection 一致，改动后需重建 collection
@@ -69,6 +70,14 @@ class Settings(BaseSettings):
     # 前端 / 跨域
     backend_base_url: str = "http://127.0.0.1:8000"
     cors_origins: str = "*"
+
+    # Langfuse 可观测性（可选）：开关打开且密钥齐全时才启用，否则退化为 no-op
+    langfuse_enabled: bool = False
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+    # 采样率 0~1，生产高流量时可调低以控制上报量
+    langfuse_sample_rate: float = 1.0
 
     @property
     def postgres_dsn(self) -> str:
