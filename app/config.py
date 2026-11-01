@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     milvus_top_k: int = 4
 
     # 文档切片
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    chunk_size: int = 1200
+    chunk_overlap: int = 240
     upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
     max_upload_mb: int = 20
 

@@ -80,15 +80,30 @@ def extract_segments(path: Path) -> list[TextSegment]:
 
 
 def chunk_segments(segments: list[TextSegment]) -> list[dict]:
-    """文本切片：按配置的 chunk_size / chunk_overlap 递归切分每个段落。
+    """文本切片：先按 Markdown 标题结构拆分，再对超长节递归裁剪。
 
-    分隔符优先级兼顾中英文（段落 → 换行 → 中文句号等 → 英文句号 → 空格），
-    每个切片携带原段落的页码；返回 [{content, page}] 列表。
+    两阶段策略：
+    1. MarkdownHeaderTextSplitter 按 h1/h2/h3 保留文档层级；
+    2. RecursiveCharacterTextSplitter 对超过 chunk_size 的节做二次切分。
+    每个切片前置标题路径作为上下文，携带原段落页码；返回 [{content, page}] 列表。
     """
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from langchain_text_splitters import (
+        MarkdownHeaderTextSplitter,
+        RecursiveCharacterTextSplitter,
+    )
 
     settings = get_settings()
-    splitter = RecursiveCharacterTextSplitter(
+
+    header_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=[
+            ("#", "h1"),
+            ("##", "h2"),
+            ("###", "h3"),
+        ],
+        strip_headers=False,
+    )
+
+    text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
         separators=["\n\n", "\n", "。", "！", "？", ".", " ", ""],
@@ -96,10 +111,18 @@ def chunk_segments(segments: list[TextSegment]) -> list[dict]:
 
     chunks: list[dict] = []
     for segment in segments:
-        for piece in splitter.split_text(segment.text):
-            piece = piece.strip()
-            if piece:
-                chunks.append({"content": piece, "page": segment.page})
+        sections = header_splitter.split_text(segment.text)
+        for section in sections:
+            header_path = " > ".join(
+                v for k, v in section.metadata.items() if k in ("h1", "h2", "h3")
+            )
+            pieces = text_splitter.split_text(section.page_content)
+            for piece in pieces:
+                piece = piece.strip()
+                if not piece:
+                    continue
+                content = f"[{header_path}]\n{piece}" if header_path else piece
+                chunks.append({"content": content, "page": segment.page})
     return chunks
 
 
