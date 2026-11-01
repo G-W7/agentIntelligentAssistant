@@ -20,7 +20,7 @@ dependencies = [
     "langchain-text-splitters>=0.3.0",
     "langgraph>=0.2.0",
     # 存储
-    "pymilvus>=2.4.0",
+    "pymilvus>=2.6.0,<2.7.0",
     "psycopg2-binary>=2.9.10",
     # 工具
     "tavily-python>=0.5.0",

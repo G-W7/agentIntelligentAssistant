@@ -78,6 +78,52 @@ class DashScopeEmbeddings:
         return self._embed([text])[0]
 
 
+class DashScopeReranker:
+    """基于 DashScope（千问）TextReRank 的重排序模型。
+
+    接收 query 与候选文档列表，返回按相关性降序排列的 (原始下标, 分数) 列表。
+    与 DashScopeEmbeddings 共用 api_key / base_url 网关配置。
+    """
+
+    def __init__(self, model: str, api_key: str, base_url: str | None = None) -> None:
+        import dashscope
+
+        self._dashscope = dashscope
+        self.model = model
+        dashscope.api_key = api_key
+        if base_url:
+            dashscope.base_http_api_url = base_url
+
+    def rerank(self, query: str, documents: list[str], top_n: int) -> list[tuple[int, float]]:
+        from http import HTTPStatus
+
+        if not documents:
+            return []
+        resp = self._dashscope.TextReRank.call(
+            model=self.model,
+            query=query,
+            documents=documents,
+            top_n=min(top_n, len(documents)),
+            return_documents=False,
+        )
+        if resp.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f"DashScope rerank 调用失败: "
+                f"code={resp.status_code}, message={getattr(resp, 'message', resp)}"
+            )
+        results = resp.output["results"]
+        ranked: list[tuple[int, float]] = []
+        for item in results:
+            index = item["index"] if isinstance(item, dict) else item.index
+            score = (
+                item["relevance_score"]
+                if isinstance(item, dict)
+                else item.relevance_score
+            )
+            ranked.append((int(index), float(score)))
+        return ranked
+
+
 @lru_cache
 def get_chat_model() -> Any:
     """构造并缓存 deepseek 对话模型单例。
@@ -114,4 +160,19 @@ def get_embeddings() -> Any:
         api_key=settings.dashscope_api_key,
         base_url=settings.dashscope_base_url,
         batch_size=settings.dashscope_batch_size,
+    )
+
+
+@lru_cache
+def get_reranker() -> Any:
+    """构造并缓存千问 DashScope Rerank 单例。"""
+    settings = get_settings()
+
+    if not settings.dashscope_api_key:
+        raise RuntimeError("未配置 DASHSCOPE_API_KEY，无法初始化 Rerank 模型")
+
+    return DashScopeReranker(
+        model=settings.rerank_model,
+        api_key=settings.dashscope_api_key,
+        base_url=settings.dashscope_base_url,
     )

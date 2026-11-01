@@ -1,6 +1,7 @@
 """RAG 核心流程：文档解析 → 切片 → 向量化 → 写入 Milvus → 检索。
 
 对应设计文档 4.2。
+稀疏向量由 Milvus BM25 Function 在服务端自动从 content 字段生成，客户端无需处理。
 """
 
 import logging
@@ -8,11 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import get_settings
-from app.core.llm import get_embeddings
+from app.core.llm import get_embeddings, get_reranker
 from app.db import milvus_client
 
 logger = logging.getLogger(__name__)
-
 
 @dataclass
 class TextSegment:
@@ -145,7 +145,10 @@ def embed_query(text: str) -> list[float]:
 
 
 def ingest_file(file_id: str, path: Path) -> int:
-    """把单个文件写入向量库，返回切片数量。"""
+    """把单个文件写入向量库，返回切片数量。
+
+    稀疏向量由 Milvus BM25 Function 从 content 字段自动生成，无需客户端传入。
+    """
     milvus_client.init_collection()
 
     chunks = chunk_segments(extract_segments(path))
@@ -171,13 +174,51 @@ def ingest_file(file_id: str, path: Path) -> int:
     return count
 
 
+def rerank_hits(query: str, hits: list[dict], top_n: int) -> list[dict]:
+    """用 DashScope qwen3-rerank 对粗召回结果精排，返回相关性最高的 top_n 条。
+
+    精排失败时降级为原始顺序截断，保证检索链路不因 rerank 服务异常而中断。
+    """
+    if not hits:
+        return []
+    try:
+        ranked = get_reranker().rerank(query, [h["content"] for h in hits], top_n)
+    except Exception as e:
+        logger.warning("Rerank 调用失败，降级为原始排序：%s", e)
+        return hits[:top_n]
+
+    result: list[dict] = []
+    for index, score in ranked:
+        if 0 <= index < len(hits):
+            hit = dict(hits[index])
+            hit["score"] = score
+            result.append(hit)
+    return result
+
+
 def retrieve_chunks(
     query: str, top_k: int | None = None, file_ids: list[str] | None = None
 ) -> list[ChunkHit]:
-    """向量检索 Top-K 片段，可按文件 ID 过滤。"""
-    hits = milvus_client.search(
-        query_vector=embed_query(query), top_k=top_k, file_ids=file_ids
+    """混合检索 + 重排序：先粗召回候选，再用 qwen3.7-text-rerank 精排取 Top-K。
+
+    关闭 rerank（RERANK_ENABLED=false）时退化为纯混合检索按权重融合排序。
+    """
+    settings = get_settings()
+    final_k = top_k or settings.milvus_top_k
+    recall_k = max(final_k, settings.rerank_recall) if settings.rerank_enabled else final_k
+
+    hits = milvus_client.hybrid_search(
+        query_vector=embed_query(query),
+        query_text=query,
+        top_k=recall_k,
+        file_ids=file_ids,
     )
+
+    if settings.rerank_enabled:
+        hits = rerank_hits(query, hits, final_k)
+    else:
+        hits = hits[:final_k]
+
     return [ChunkHit(**hit) for hit in hits]
 
 

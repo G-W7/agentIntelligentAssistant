@@ -104,6 +104,7 @@ async def rag_worker(state: AgentState) -> dict[str, Any]:
     并把命中片段整理为 sources 返回给前端展示。
     """
     query = last_human_text(state["messages"])
+    # TODO: 透传 file_ids 参数，支持用户指定知识库文档范围检索
     hits = await asyncio.to_thread(rag_service.retrieve_chunks, query)
 
     if not hits:

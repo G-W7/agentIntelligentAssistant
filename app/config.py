@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # 同步接口单批上限 25，v3/v4 建议 10 以内
     dashscope_batch_size: int = 10
 
+    # Rerank：千问 DashScope 重排序模型（gte-rerank 已于 2026-05 下线，改用 qwen3-rerank）
+    # 开启后：混合检索先粗召回 rerank_recall 条，再由 rerank 模型精排取 top_k
+    rerank_enabled: bool = True
+    rerank_model: str = "qwen3.7-text-rerank"
+    rerank_recall: int = 20
+
     # 联网搜索
     tavily_api_key: str = ""
     tavily_max_results: int = 5
@@ -60,6 +66,8 @@ class Settings(BaseSettings):
     milvus_port: int = 19530
     milvus_collection: str = "agent_knowledge_base"
     milvus_top_k: int = 4
+    milvus_sparse_weight: float = 0.3
+    milvus_dense_weight: float = 0.7
 
     # 文档切片
     chunk_size: int = 1200
