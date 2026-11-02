@@ -10,6 +10,38 @@ Route = Literal["rag", "chat", "search"]
 Role = Literal["user", "assistant"]
 
 
+class RegisterRequest(BaseModel):
+    """/api/auth/register 请求体：用户名与密码。"""
+
+    # \p{L}/\p{N} 为 Unicode 字母/数字类（Pydantic v2 走 Rust 正则，支持中文），
+    # 再放行 . _ @ + - 以兼容邮箱与常见分隔符；空格及其它符号仍被拒绝。
+    username: str = Field(min_length=2, max_length=50, pattern=r"^[\p{L}\p{N}._@+-]+$", description="用户名（中英文/数字及 . _ @ + - 符号）")
+    password: str = Field(min_length=6, max_length=128, description="密码，至少 6 位")
+
+
+class LoginRequest(BaseModel):
+    """/api/auth/login 请求体。"""
+
+    username: str = Field(min_length=1, max_length=50)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class UserOut(BaseModel):
+    """对外暴露的用户信息（不含密码哈希）。"""
+
+    id: str
+    username: str
+    created_at: datetime | None = None
+
+
+class TokenResponse(BaseModel):
+    """登录 / 注册成功后的响应体：访问令牌与用户信息。"""
+
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
+
+
 class ChatRequest(BaseModel):
     """/api/chat 请求体：用户消息与会话标识。"""
 
@@ -48,6 +80,22 @@ class HistoryItem(BaseModel):
     content: str
     metadata: dict[str, Any] | None = None
     created_at: datetime
+
+
+class SessionItem(BaseModel):
+    """/api/sessions 单条会话：ID、最后消息时间、消息数与内容预览。"""
+
+    session_id: str
+    last_message_at: datetime
+    message_count: int
+    preview: str = ""
+
+
+class DeleteSessionResponse(BaseModel):
+    """DELETE /api/sessions/{session_id} 响应体。"""
+
+    session_id: str
+    deleted_messages: int
 
 
 class FileItem(BaseModel):

@@ -104,6 +104,21 @@ def build_file_filter(file_ids: list[str]) -> str:
     return f"source_file_id in [{joined}]"
 
 
+def build_filter(user_id: str | None, file_ids: list[str] | None = None) -> str:
+    """组合用户隔离与文件范围过滤表达式。
+
+    user_id 以动态字段形式存储（collection 已开启 enable_dynamic_field），
+    多个条件用 and 连接；均为空时返回空串表示不过滤。
+    """
+    clauses: list[str] = []
+    if user_id:
+        clauses.append(f"user_id == {_quote(user_id)}")
+    file_clause = build_file_filter(file_ids or [])
+    if file_clause:
+        clauses.append(file_clause)
+    return " and ".join(clauses)
+
+
 def insert_chunks(rows: list[dict[str, Any]]) -> int:
     """批量插入切片向量行，返回插入条数；空列表直接返回 0，不触发网络请求。"""
     if not rows:
@@ -113,11 +128,14 @@ def insert_chunks(rows: list[dict[str, Any]]) -> int:
 
 
 def search(
-    query_vector: list[float], top_k: int | None = None, file_ids: list[str] | None = None
+    query_vector: list[float],
+    top_k: int | None = None,
+    file_ids: list[str] | None = None,
+    user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """纯稠密向量检索，返回 [{content, source_file_id, page, score}]，score 越大越相关。"""
     settings = get_settings()
-    expr = build_file_filter(file_ids or [])
+    expr = build_filter(user_id, file_ids)
 
     raw = get_client().search(
         collection_name=settings.milvus_collection,
@@ -147,17 +165,19 @@ def hybrid_search(
     query_text: str,
     top_k: int | None = None,
     file_ids: list[str] | None = None,
+    user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """混合检索：稠密向量（COSINE）+ BM25 稀疏向量，按权重融合排序。
 
     query_text 直接传给 Milvus BM25 Function，服务端负责分词与稀疏向量生成。
     权重由 MILVUS_DENSE_WEIGHT / MILVUS_SPARSE_WEIGHT 控制，默认 0.7 / 0.3。
+    传入 user_id 时仅检索该用户自己的文档。
     """
     from pymilvus import AnnSearchRequest, WeightedRanker
 
     settings = get_settings()
     limit = top_k or settings.milvus_top_k
-    expr = build_file_filter(file_ids or []) or None
+    expr = build_filter(user_id, file_ids) or None
 
     dense_req = AnnSearchRequest(
         data=[query_vector],
@@ -196,11 +216,14 @@ def hybrid_search(
     return hits
 
 
-def delete_by_file(file_id: str) -> int:
-    """删除某文件的全部切片向量，返回删除条数。"""
+def delete_by_file(file_id: str, user_id: str | None = None) -> int:
+    """删除某文件的全部切片向量，返回删除条数；传入 user_id 时附加归属校验。"""
+    expr = f"source_file_id == {_quote(file_id)}"
+    if user_id:
+        expr = f"{expr} and user_id == {_quote(user_id)}"
     result = get_client().delete(
         collection_name=get_settings().milvus_collection,
-        filter=f"source_file_id == {_quote(file_id)}",
+        filter=expr,
     )
     return int(result.get("delete_count", 0)) if isinstance(result, dict) else 0
 

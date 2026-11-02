@@ -25,6 +25,7 @@ class AgentState(MessagesState):
     """LangGraph 全局状态。messages 由 add_messages reducer 自动累加。"""
 
     session_id: str
+    user_id: str
     route: Destination
     route_reason: str
     sources: list[dict[str, Any]]
@@ -104,8 +105,10 @@ async def rag_worker(state: AgentState) -> dict[str, Any]:
     并把命中片段整理为 sources 返回给前端展示。
     """
     query = last_human_text(state["messages"])
-    # TODO: 透传 file_ids 参数，支持用户指定知识库文档范围检索
-    hits = await asyncio.to_thread(rag_service.retrieve_chunks, query)
+    # 仅检索当前登录用户自己的知识库文档
+    hits = await asyncio.to_thread(
+        rag_service.retrieve_chunks, query, state["user_id"]
+    )
 
     if not hits:
         answer = "知识库中未检索到与该问题相关的内容。请先上传相关文档，或换一种问法。"

@@ -1,12 +1,14 @@
 "use client";
 
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Bot } from "lucide-react";
+import { Bot, LogOut } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 import { getErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { HealthResponse } from "@/lib/types";
+import { useAuthStore } from "@/stores/auth-store";
 
 function BackendStatus({
   query,
@@ -58,6 +60,9 @@ export function AppHeader({
 }: {
   healthQuery: UseQueryResult<HealthResponse, Error>;
 }) {
+  const username = useAuthStore((state) => state.user?.username ?? null);
+  const logout = useAuthStore((state) => state.logout);
+
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center gap-3 px-3 sm:px-4 lg:px-6">
@@ -76,7 +81,24 @@ export function AppHeader({
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <BackendStatus query={healthQuery} />
+          {username && (
+            <span
+              className="hidden max-w-[120px] truncate rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex"
+              title={username}
+            >
+              {username}
+            </span>
+          )}
           <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={logout}
+            title="退出登录"
+            aria-label="退出登录"
+          >
+            <LogOut className="size-4" />
+          </Button>
         </div>
       </div>
     </header>

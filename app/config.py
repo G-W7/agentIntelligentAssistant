@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     # 会话
     history_window: int = 20
 
+    # 认证（JWT）：生产环境务必用环境变量注入一个足够随机的 jwt_secret_key（≥ 32 字节）
+    jwt_secret_key: str = "change-me-in-production-use-a-random-secret-key"
+    jwt_algorithm: str = "HS256"
+    # 访问令牌有效期（分钟），默认 7 天
+    access_token_expire_minutes: int = 60 * 24 * 7
+
     # 前端 / 跨域
     backend_base_url: str = "http://127.0.0.1:8000"
     cors_origins: str = "*"

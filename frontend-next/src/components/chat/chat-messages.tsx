@@ -10,10 +10,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  ChatMessageItem,
-  PendingMessage,
-} from "@/components/chat/chat-message";
+import { ChatMessageItem } from "@/components/chat/chat-message";
 import {
   KNOWLEDGE_SUGGESTION,
   SUGGESTIONS,
@@ -101,6 +98,10 @@ export function ChatMessages({
   const previousCount = useRef(0);
   const [atBottom, setAtBottom] = useState(true);
 
+  const lastMessage = messages[messages.length - 1];
+  const lastContentLength = lastMessage?.content.length ?? 0;
+  const lastStreaming = lastMessage?.streaming ?? false;
+
   useEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -112,6 +113,15 @@ export function ChatMessages({
       element.scrollTo({ top: element.scrollHeight, behavior: "smooth" });
     }
   }, [messages.length, atBottom]);
+
+  // 流式期间：每次 token 追加都同步滚动到底部（用 auto 避免频繁 smooth 抖动）
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    if (atBottom && lastStreaming) {
+      element.scrollTop = element.scrollHeight;
+    }
+  }, [lastContentLength, lastStreaming, atBottom]);
 
   // 展开来源、图片加载等会让内容高度变化，需要重新判断是否仍在底部。
   useEffect(() => {
@@ -144,6 +154,9 @@ export function ChatMessages({
   }
 
   const showWelcome = !isLoading && !historyError && messages.length === 0;
+  // 占位助手消息已由 useChat 注入，isSendingHere 只用于兜底（例如占位尚未出现在缓存时）
+  const showPending =
+    isSendingHere && (!lastMessage || lastMessage.role !== "assistant");
 
   return (
     <div className="relative h-full">
@@ -181,7 +194,7 @@ export function ChatMessages({
                   fileNames={fileNames}
                 />
               ))}
-              {isSendingHere ? <PendingMessage /> : null}
+              {showPending ? <PendingMessageFallback /> : null}
             </>
           )}
         </div>
@@ -203,3 +216,6 @@ export function ChatMessages({
     </div>
   );
 }
+
+// 保留原有 PendingMessage 组件供外部使用，此处内部再包一层避免额外 import。
+import { PendingMessage as PendingMessageFallback } from "@/components/chat/chat-message";

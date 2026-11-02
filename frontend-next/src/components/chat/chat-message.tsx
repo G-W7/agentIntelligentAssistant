@@ -60,6 +60,8 @@ export function ChatMessageItem({
   const reason = message.metadata?.route_reason;
   const sources = message.metadata?.sources ?? [];
   const time = formatTime(message.createdAt);
+  const isStreaming = message.streaming === true;
+  const hasContent = message.content.trim().length > 0;
 
   return (
     <div className="flex gap-2.5">
@@ -88,8 +90,18 @@ export function ChatMessageItem({
             </div>
           ) : null}
 
-          {message.content.trim() ? (
-            <Markdown content={message.content} />
+          {isStreaming && !hasContent ? (
+            <ThinkingDots />
+          ) : hasContent ? (
+            <div className="relative">
+              <Markdown content={message.content} />
+              {isStreaming ? (
+                <span
+                  aria-hidden
+                  className="ml-0.5 inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-muted-foreground align-middle"
+                />
+              ) : null}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Agent 未返回内容。</p>
           )}
@@ -103,19 +115,25 @@ export function ChatMessageItem({
   );
 }
 
+function ThinkingDots() {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
+      <span className="ml-2 text-xs text-muted-foreground">
+        Agent 正在思考…
+      </span>
+    </div>
+  );
+}
+
 export function PendingMessage() {
   return (
     <div className="flex gap-2.5">
       <BotAvatar />
       <div className="rounded-2xl rounded-tl-md border border-border/60 bg-card px-4 py-3 shadow-xs">
-        <div className="flex items-center gap-1">
-          <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
-          <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.15s]" />
-          <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground" />
-          <span className="ml-2 text-xs text-muted-foreground">
-            Agent 正在思考…
-          </span>
-        </div>
+        <ThinkingDots />
       </div>
     </div>
   );

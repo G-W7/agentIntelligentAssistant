@@ -1,14 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { AppHeader } from "@/components/app-header";
+import { AuthScreen } from "@/components/auth/auth-screen";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { KnowledgePanel } from "@/components/knowledge/knowledge-panel";
 import { ServiceStatus } from "@/components/service-status";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilesQuery, useHealthQuery } from "@/hooks/queries";
 import { useMounted } from "@/hooks/use-mounted";
+import { useAuthStore } from "@/stores/auth-store";
 import { useSessionStore } from "@/stores/session-store";
 
 function DashboardSkeleton() {
@@ -38,10 +42,20 @@ function DashboardSkeleton() {
 
 export function AssistantApp() {
   const mounted = useMounted();
+  const queryClient = useQueryClient();
   const sessionId = useSessionStore((state) => state.sessionId);
+  const authed = useAuthStore((state) => Boolean(state.token && state.user));
+  const userId = useAuthStore((state) => state.user?.id ?? null);
+
+  // 登录用户变化（登录 / 登出 / 切换账号）时清空查询缓存，
+  // 防止上一个用户的历史 / 文件 / 会话数据残留。
+  useEffect(() => {
+    queryClient.clear();
+  }, [userId, queryClient]);
 
   const healthQuery = useHealthQuery(mounted);
-  const filesQuery = useFilesQuery(mounted);
+  // 仅登录后才拉取文件列表，避免未鉴权请求触发 401
+  const filesQuery = useFilesQuery(mounted && authed);
 
   const fileNames = useMemo(
     () =>
@@ -51,12 +65,17 @@ export function AssistantApp() {
 
   if (!mounted) return <DashboardSkeleton />;
 
+  // 路由守卫：未登录时展示登录 / 注册页
+  if (!authed) return <AuthScreen />;
+
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader healthQuery={healthQuery} />
 
       <main className="mx-auto w-full max-w-[1440px] flex-1 px-3 py-4 sm:px-4 lg:px-6">
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
+        <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)_380px] xl:grid-cols-[260px_minmax(0,1fr)_410px]">
+          <SessionSidebar sessionId={sessionId} disabled={false} />
+
           <ChatPanel
             sessionId={sessionId}
             fileNames={fileNames}

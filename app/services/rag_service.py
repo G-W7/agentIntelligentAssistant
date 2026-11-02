@@ -144,10 +144,11 @@ def embed_query(text: str) -> list[float]:
     return get_embeddings().embed_query(text)
 
 
-def ingest_file(file_id: str, path: Path) -> int:
+def ingest_file(file_id: str, path: Path, user_id: str) -> int:
     """把单个文件写入向量库，返回切片数量。
 
     稀疏向量由 Milvus BM25 Function 从 content 字段自动生成，无需客户端传入。
+    user_id 以动态字段写入，用于检索时的用户隔离过滤。
     """
     milvus_client.init_collection()
 
@@ -164,6 +165,7 @@ def ingest_file(file_id: str, path: Path) -> int:
             "vector": vector,
             "content": chunk["content"],
             "source_file_id": file_id,
+            "user_id": user_id,
         }
         if chunk["page"] is not None:
             row["page"] = chunk["page"]
@@ -197,11 +199,14 @@ def rerank_hits(query: str, hits: list[dict], top_n: int) -> list[dict]:
 
 
 def retrieve_chunks(
-    query: str, top_k: int | None = None, file_ids: list[str] | None = None
+    query: str,
+    user_id: str,
+    top_k: int | None = None,
+    file_ids: list[str] | None = None,
 ) -> list[ChunkHit]:
     """混合检索 + 重排序：先粗召回候选，再用 qwen3.7-text-rerank 精排取 Top-K。
 
-    关闭 rerank（RERANK_ENABLED=false）时退化为纯混合检索按权重融合排序。
+    仅检索 user_id 归属的文档；关闭 rerank（RERANK_ENABLED=false）时退化为纯混合检索按权重融合排序。
     """
     settings = get_settings()
     final_k = top_k or settings.milvus_top_k
@@ -212,6 +217,7 @@ def retrieve_chunks(
         query_text=query,
         top_k=recall_k,
         file_ids=file_ids,
+        user_id=user_id,
     )
 
     if settings.rerank_enabled:

@@ -41,8 +41,8 @@ def _validate(original_filename: str, raw: bytes) -> str:
     return suffix.lstrip(".")
 
 
-def upload_and_ingest(original_filename: str, raw: bytes) -> dict[str, Any]:
-    """保存文件并完成向量化，返回文件记录与切片数。
+def upload_and_ingest(original_filename: str, raw: bytes, user_id: str) -> dict[str, Any]:
+    """保存文件并完成向量化，归属指定用户，返回文件记录与切片数。
 
     向量化失败时记录状态置为 error 并抛出异常，文件与元数据保留以便排查。
     """
@@ -53,6 +53,7 @@ def upload_and_ingest(original_filename: str, raw: bytes) -> dict[str, Any]:
         filename=Path(original_filename).name,
         file_type=file_type,
         file_size=len(raw),
+        user_id=user_id,
     )
     file_id = record["id"]
 
@@ -61,7 +62,7 @@ def upload_and_ingest(original_filename: str, raw: bytes) -> dict[str, Any]:
     stored_path.write_bytes(raw)
 
     try:
-        chunk_count = rag_service.ingest_file(file_id, stored_path)
+        chunk_count = rag_service.ingest_file(file_id, stored_path, user_id)
     except Exception:
         pg_client.set_file_status(file_id, "error")
         logger.exception("文件 %s 向量化失败", file_id)
@@ -70,27 +71,27 @@ def upload_and_ingest(original_filename: str, raw: bytes) -> dict[str, Any]:
     status = "ready" if chunk_count else "error"
     pg_client.set_file_status(file_id, status)
 
-    return {"file": pg_client.get_file(file_id), "chunk_count": chunk_count}
+    return {"file": pg_client.get_file(file_id, user_id), "chunk_count": chunk_count}
 
 
-def list_files() -> list[dict[str, Any]]:
-    """返回知识库全部文件记录（上传时间倒序）。"""
-    return pg_client.list_files()
+def list_files(user_id: str) -> list[dict[str, Any]]:
+    """返回指定用户的全部文件记录（上传时间倒序）。"""
+    return pg_client.list_files(user_id)
 
 
-def delete_file(file_id: str) -> dict[str, Any]:
-    """删除向量、元数据与磁盘文件。文件不存在时抛 ValueError。"""
-    record = pg_client.get_file(file_id)
+def delete_file(file_id: str, user_id: str) -> dict[str, Any]:
+    """删除向量、元数据与磁盘文件。文件不存在或不属于该用户时抛 ValueError。"""
+    record = pg_client.get_file(file_id, user_id)
     if record is None:
         raise ValueError(f"文件不存在：{file_id}")
 
     try:
-        deleted_vectors = milvus_client.delete_by_file(file_id)
+        deleted_vectors = milvus_client.delete_by_file(file_id, user_id)
     except Exception:
         logger.exception("删除 %s 的向量失败，仍继续清理元数据", file_id)
         deleted_vectors = 0
 
-    pg_client.delete_file_record(file_id)
+    pg_client.delete_file_record(file_id, user_id)
     stored_path_for(file_id, record["file_type"]).unlink(missing_ok=True)
 
     return {"file_id": file_id, "deleted_vectors": deleted_vectors}

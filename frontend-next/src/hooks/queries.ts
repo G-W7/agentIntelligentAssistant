@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 export const queryKeys = {
   health: ["health"] as const,
   files: ["files"] as const,
+  sessions: ["sessions"] as const,
   history: (sessionId: string) => ["history", sessionId] as const,
 };
 
@@ -28,6 +29,18 @@ export function useFilesQuery(enabled = true) {
   return useQuery({
     queryKey: queryKeys.files,
     queryFn: ({ signal }) => api.files(signal),
+    enabled,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    staleTime: 10_000,
+  });
+}
+
+/** 历史会话列表：新会话创建 / 发送消息后由调用方 invalidate。 */
+export function useSessionsQuery(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.sessions,
+    queryFn: ({ signal }) => api.sessions(50, signal),
     enabled,
     refetchOnWindowFocus: false,
     retry: 1,
