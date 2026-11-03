@@ -16,7 +16,7 @@ from langchain_core.messages import (
 )
 
 from app.config import get_settings
-from app.core.agent_graph import WORKER_NODES, get_graph
+from app.core.agent_graph import get_graph, get_worker_nodes
 from app.core.observability import build_callbacks
 from app.db import pg_client
 
@@ -30,9 +30,15 @@ _ROLE_CLASSES = {"user": HumanMessage, "assistant": AIMessage}
 # 键为 (user_id, session_id)，防止不同用户的同名会话相互干扰。
 _warmed_sessions: set[tuple[str, str]] = set()
 
-# 允许向前端推送 token 的节点集合（router 使用结构化输出，其 token 是
-# JSON 片段，不应作为回答内容展示）。
-_STREAMABLE_NODES: frozenset[str] = frozenset(WORKER_NODES.values())
+
+def _streamable_nodes() -> frozenset[str]:
+    """允许向前端推送 token 的节点集合（router 使用结构化输出，其 token 是
+    JSON 片段，不应作为回答内容展示）。
+
+    延迟求值：技能注册表在 get_graph() 首次编译时才 discover，模块加载期
+    取到的节点集会为空，故改为按需计算。
+    """
+    return frozenset(get_worker_nodes().values())
 
 
 def _text_of(message: BaseMessage) -> str:
@@ -152,6 +158,7 @@ async def chat_stream(session_id: str, user_id: str, message: str) -> AsyncItera
     graph = get_graph()
     config = _build_graph_config(session_id, user_id)
     seed = await _prepare_session(session_id, user_id, message)
+    streamable = _streamable_nodes()
 
     yield {"type": "start", "session_id": session_id}
 
@@ -176,7 +183,7 @@ async def chat_stream(session_id: str, user_id: str, message: str) -> AsyncItera
             # chunk = (message_chunk, metadata)
             message_chunk, metadata = chunk
             node = metadata.get("langgraph_node") if isinstance(metadata, dict) else None
-            if node not in _STREAMABLE_NODES:
+            if node not in streamable:
                 continue
             if not isinstance(message_chunk, AIMessageChunk):
                 continue
@@ -202,7 +209,7 @@ async def chat_stream(session_id: str, user_id: str, message: str) -> AsyncItera
                         "route": route,
                         "route_reason": route_reason,
                     }
-                elif node_name in _STREAMABLE_NODES:
+                elif node_name in streamable:
                     node_sources = delta.get("sources") or []
                     if node_sources and not sources_emitted:
                         sources = list(node_sources)

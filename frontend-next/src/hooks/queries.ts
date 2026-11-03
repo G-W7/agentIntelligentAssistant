@@ -8,6 +8,8 @@ export const queryKeys = {
   health: ["health"] as const,
   files: ["files"] as const,
   sessions: ["sessions"] as const,
+  skills: ["skills"] as const,
+  mcpStatus: ["mcp-status"] as const,
   history: (sessionId: string) => ["history", sessionId] as const,
 };
 
@@ -45,5 +47,29 @@ export function useSessionsQuery(enabled = true) {
     refetchOnWindowFocus: false,
     retry: 1,
     staleTime: 10_000,
+  });
+}
+
+/** 技能列表：后端注册表发现的可用技能（只读展示，变化不频繁）。 */
+export function useSkillsQuery(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.skills,
+    queryFn: ({ signal }) => api.skills(signal),
+    enabled,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    staleTime: 60_000,
+  });
+}
+
+/** MCP 接入状态：已配置的 server 与已加载的工具列表。 */
+export function useMcpStatusQuery(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.mcpStatus,
+    queryFn: ({ signal }) => api.mcpStatus(signal),
+    enabled,
+    refetchOnWindowFocus: false,
+    retry: 1,
+    staleTime: 60_000,
   });
 }

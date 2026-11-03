@@ -14,6 +14,8 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import get_current_user
+from app.config import get_settings
+from app.core import mcp_client
 from app.db import milvus_client, pg_client
 from app.models.schemas import (
     ChatRequest,
@@ -23,10 +25,14 @@ from app.models.schemas import (
     FileItem,
     HealthResponse,
     HistoryItem,
+    McpStatusResponse,
+    McpToolInfo,
     SessionItem,
+    SkillInfo,
     UploadResponse,
 )
 from app.services import chat_service, knowledge_service
+from app.skills import registry
 
 logger = logging.getLogger(__name__)
 
@@ -228,4 +234,64 @@ def health() -> HealthResponse:
         milvus=milvus_ok,
         milvus_vectors=vector_count,
         knowledge_files=file_count,
+    )
+
+
+@router.get("/skills", response_model=list[SkillInfo], summary="列出可用技能")
+def list_skills(
+    include_disabled: bool = Query(False, description="是否包含未启用的技能"),
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> list[SkillInfo]:
+    """技能列表接口：返回注册表中已发现的技能（默认仅启用的），供前端只读展示。
+
+    同步函数，FastAPI 自动放线程池；首次调用会触发技能发现。
+    """
+    return [
+        SkillInfo(
+            name=s.metadata.name,
+            label=s.metadata.label,
+            description=s.metadata.description,
+            icon=s.metadata.icon,
+            color=s.metadata.color,
+            kind=s.metadata.kind,
+            enabled=s.metadata.enabled,
+        )
+        for s in registry.all_skills(include_disabled=include_disabled)
+    ]
+
+
+@router.get("/mcp/status", response_model=McpStatusResponse, summary="MCP 工具接入状态")
+async def mcp_status(
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> McpStatusResponse:
+    """MCP 状态接口：返回配置与已加载工具；未配置时 configured=False。
+
+    已配置时才尝试连接并加载工具（需 await）；加载异常降级为 error 字段。
+    """
+    settings = get_settings()
+    servers = mcp_client.list_servers()
+    configured = bool(servers)
+    tools: list[McpToolInfo] = []
+    error: str | None = None
+
+    if configured:
+        try:
+            loaded = await mcp_client.get_tools()
+            tools = [
+                McpToolInfo(
+                    name=getattr(t, "name", "") or "",
+                    description=(getattr(t, "description", "") or "")[:300],
+                )
+                for t in loaded
+            ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MCP 工具加载失败：%s", exc)
+            error = str(exc)
+
+    return McpStatusResponse(
+        configured=configured,
+        enabled=settings.mcp_enabled,
+        servers=servers,
+        tools=tools,
+        error=error,
     )

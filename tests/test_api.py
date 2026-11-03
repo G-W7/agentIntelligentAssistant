@@ -7,10 +7,12 @@
 （避免启动时真的去连 PG/Milvus）。
 """
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
-from app.core import security
+from app.core import mcp_client, security
 from app.db import milvus_client, pg_client
 from app.main import app
 from app.services import chat_service, knowledge_service
@@ -348,3 +350,80 @@ def test_delete_file_ok(client, auth_headers, monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["deleted_vectors"] == 5
+
+
+# ============ 技能与 MCP（只读展示） ============
+
+
+def test_list_skills(client, auth_headers):
+    resp = client.get("/api/skills", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    names = {s["name"] for s in body}
+    # 内置三技能必然启用并出现
+    assert names >= {"rag", "search", "chat"}
+    rag = next(s for s in body if s["name"] == "rag")
+    assert rag["label"] == "知识库"
+    assert rag["kind"] == "builtin"
+    assert rag["enabled"] is True
+    # 只读展示字段齐全
+    assert {"name", "label", "description", "icon", "color", "kind", "enabled"} <= set(rag)
+
+
+def test_list_skills_include_disabled(client, auth_headers):
+    resp = client.get("/api/skills?include_disabled=true", headers=auth_headers)
+    assert resp.status_code == 200
+    names = {s["name"] for s in resp.json()}
+    # mcp 技能无论是否启用都会被注册，include_disabled 时必在列
+    assert "mcp" in names
+
+
+def test_list_skills_requires_auth(client):
+    assert client.get("/api/skills").status_code == 401
+
+
+def test_mcp_status_unconfigured(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(mcp_client, "list_servers", lambda: [])
+    resp = client.get("/api/mcp/status", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is False
+    assert body["servers"] == []
+    assert body["tools"] == []
+    assert body["error"] is None
+
+
+def test_mcp_status_configured_lists_tools(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(mcp_client, "list_servers", lambda: ["fs"])
+
+    async def fake_tools():
+        return [SimpleNamespace(name="read_file", description="读取文件")]
+
+    monkeypatch.setattr(mcp_client, "get_tools", fake_tools)
+    resp = client.get("/api/mcp/status", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is True
+    assert body["servers"] == ["fs"]
+    assert body["tools"][0]["name"] == "read_file"
+    assert body["tools"][0]["description"] == "读取文件"
+    assert body["error"] is None
+
+
+def test_mcp_status_tool_load_error(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(mcp_client, "list_servers", lambda: ["fs"])
+
+    async def boom():
+        raise RuntimeError("连接失败")
+
+    monkeypatch.setattr(mcp_client, "get_tools", boom)
+    resp = client.get("/api/mcp/status", headers=auth_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["configured"] is True
+    assert body["tools"] == []
+    assert body["error"]  # 降级为非空错误串
+
+
+def test_mcp_status_requires_auth(client):
+    assert client.get("/api/mcp/status").status_code == 401

@@ -5,8 +5,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-# 路由目标与消息角色的字面量类型别名
-Route = Literal["rag", "chat", "search"]
+# 路由目标由技能注册表在运行时动态决定，故放宽为 str（不再是固定字面量）；
+# 消息角色仍为固定字面量。
+Route = str
 Role = Literal["user", "assistant"]
 
 
@@ -50,14 +51,15 @@ class ChatRequest(BaseModel):
 
 
 class SourceItem(BaseModel):
-    """回答的引用来源，knowledge 为知识库片段，web 为联网搜索结果。"""
+    """回答的引用来源：knowledge 为知识库片段，web 为联网搜索结果，tool 为 MCP 工具调用。"""
 
-    kind: Literal["knowledge", "web"]
+    kind: Literal["knowledge", "web", "tool"]
     title: str | None = None
     url: str | None = None
     file_id: str | None = None
     page: int | None = None
     index: int | None = None
+    tool_name: str | None = None
     score: float = 0.0
     content: str = ""
 
@@ -131,3 +133,33 @@ class HealthResponse(BaseModel):
     milvus: bool
     milvus_vectors: int = 0
     knowledge_files: int = 0
+
+
+class SkillInfo(BaseModel):
+    """GET /api/skills 单条技能：注册表中发现的技能元数据（只读）。"""
+
+    name: str
+    label: str
+    description: str
+    icon: str = "sparkles"
+    color: str = "violet"
+    kind: str = "custom"
+    enabled: bool = True
+
+
+class McpToolInfo(BaseModel):
+    """MCP 服务暴露的单个工具：名称、描述与所属 server。"""
+
+    name: str
+    description: str = ""
+    server: str = ""
+
+
+class McpStatusResponse(BaseModel):
+    """GET /api/mcp/status 响应体：MCP 接入的配置与工具加载状态。"""
+
+    configured: bool
+    enabled: bool
+    servers: list[str] = Field(default_factory=list)
+    tools: list[McpToolInfo] = Field(default_factory=list)
+    error: str | None = None

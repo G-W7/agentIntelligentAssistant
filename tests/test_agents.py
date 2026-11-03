@@ -5,7 +5,7 @@
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.core.agent_graph import WORKER_NODES, route_decision
+from app.core.agent_graph import get_worker_nodes, route_decision
 from app.core.agents import last_human_text
 
 
@@ -28,7 +28,8 @@ def test_route_decision_missing_route_defaults_chat():
 
 
 def test_worker_nodes_covers_all_destinations():
-    assert set(WORKER_NODES.keys()) == {"rag", "search", "chat"}
+    # 工作者由技能注册表动态生成；内置三技能必然在列，mcp 视配置而定。
+    assert set(get_worker_nodes()) >= {"rag", "search", "chat"}
 
 
 # ---------- last_human_text ----------

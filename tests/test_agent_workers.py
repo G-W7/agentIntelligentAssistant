@@ -1,7 +1,8 @@
-"""Agent worker 节点测试：用假 LLM 与假工具替换外部调用，验证各节点的分支逻辑。
+"""技能工作者节点测试：用假 LLM 与假工具替换外部调用，验证各技能的分支逻辑。
 
-覆盖 router_node 结构化路由、rag_worker 命中/未命中、search_worker 正常/无结果/异常降级、
-chat_worker 直答。所有节点都是 async，pytest-asyncio（auto 模式）直接驱动。
+工作者已从 app/core/agents.py 下沉为 app/skills/ 下的技能类；本文件覆盖
+router_node 结构化路由，以及 rag / search / chat 三个内置技能的 run() 分支。
+所有节点都是 async，pytest-asyncio（auto 模式）直接驱动。
 """
 
 from langchain_core.messages import AIMessage, HumanMessage
@@ -10,6 +11,9 @@ from app.core import agents
 from app.core.agents import RouteDecision
 from app.core.tools import SearchOutcome, WebResult
 from app.services.rag_service import ChunkHit
+from app.skills import chat as chat_skill
+from app.skills import rag as rag_skill
+from app.skills import search as search_skill
 
 
 class FakeStructured:
@@ -60,23 +64,23 @@ async def test_router_node_returns_decision(monkeypatch):
     assert result == {"route": "rag", "route_reason": "需要查文档"}
 
 
-# ============ rag_worker ============
+# ============ rag 技能 ============
 
 
-async def test_rag_worker_no_hits_skips_llm(monkeypatch):
-    monkeypatch.setattr(agents.rag_service, "retrieve_chunks", lambda q, uid: [])
+async def test_rag_skill_no_hits_skips_llm(monkeypatch):
+    monkeypatch.setattr(rag_skill.rag_service, "retrieve_chunks", lambda q, uid: [])
     # 未命中时不应调用 LLM
-    monkeypatch.setattr(agents, "get_chat_model", _forbid_llm())
+    monkeypatch.setattr(rag_skill, "get_chat_model", _forbid_llm())
 
     state = {"messages": [HumanMessage(content="随便问")], "user_id": "u1"}
-    result = await agents.rag_worker(state)
+    result = await rag_skill.skill.run(state)
 
     assert isinstance(result["messages"][0], AIMessage)
     assert "未检索到" in result["messages"][0].content
     assert result["sources"] == []
 
 
-async def test_rag_worker_with_hits_builds_sources(monkeypatch):
+async def test_rag_skill_with_hits_builds_sources(monkeypatch):
     hits = [
         ChunkHit(
             content="x" * 400,  # 超过 300，应被截断
@@ -85,13 +89,13 @@ async def test_rag_worker_with_hits_builds_sources(monkeypatch):
             page=2,
         )
     ]
-    monkeypatch.setattr(agents.rag_service, "retrieve_chunks", lambda q, uid: hits)
-    monkeypatch.setattr(agents.rag_service, "format_context", lambda h: "拼接的上下文")
+    monkeypatch.setattr(rag_skill.rag_service, "retrieve_chunks", lambda q, uid: hits)
+    monkeypatch.setattr(rag_skill.rag_service, "format_context", lambda h: "拼接的上下文")
     fake = FakeChatModel(answer="基于文档的答案")
-    monkeypatch.setattr(agents, "get_chat_model", lambda: fake)
+    monkeypatch.setattr(rag_skill, "get_chat_model", lambda: fake)
 
     state = {"messages": [HumanMessage(content="问题")], "user_id": "u1"}
-    result = await agents.rag_worker(state)
+    result = await rag_skill.skill.run(state)
 
     assert fake.invoked is True
     assert result["messages"][0].content == "基于文档的答案"
@@ -103,35 +107,37 @@ async def test_rag_worker_with_hits_builds_sources(monkeypatch):
     assert len(source["content"]) == 300  # 截断到 300
 
 
-# ============ search_worker ============
+# ============ search 技能 ============
 
 
-async def test_search_worker_error_degrades(monkeypatch):
+async def test_search_skill_error_degrades(monkeypatch):
     def boom(query):
         raise RuntimeError("Tavily 不可用")
 
-    monkeypatch.setattr(agents, "web_search", boom)
-    monkeypatch.setattr(agents, "get_chat_model", _forbid_llm())
+    monkeypatch.setattr(search_skill, "web_search", boom)
+    monkeypatch.setattr(search_skill, "get_chat_model", _forbid_llm())
 
     state = {"messages": [HumanMessage(content="今天天气")]}
-    result = await agents.search_worker(state)
+    result = await search_skill.skill.run(state)
 
     assert "联网搜索暂时不可用" in result["messages"][0].content
     assert result["sources"] == []
 
 
-async def test_search_worker_no_results(monkeypatch):
-    monkeypatch.setattr(agents, "web_search", lambda query: SearchOutcome(results=[]))
-    monkeypatch.setattr(agents, "get_chat_model", _forbid_llm())
+async def test_search_skill_no_results(monkeypatch):
+    monkeypatch.setattr(
+        search_skill, "web_search", lambda query: SearchOutcome(results=[])
+    )
+    monkeypatch.setattr(search_skill, "get_chat_model", _forbid_llm())
 
     state = {"messages": [HumanMessage(content="冷门问题")]}
-    result = await agents.search_worker(state)
+    result = await search_skill.skill.run(state)
 
     assert "没有找到相关的搜索结果" in result["messages"][0].content
     assert result["sources"] == []
 
 
-async def test_search_worker_success_builds_sources(monkeypatch):
+async def test_search_skill_success_builds_sources(monkeypatch):
     outcome = SearchOutcome(
         results=[
             WebResult(title="标题A", url="http://a", content="正文A", score=0.91234),
@@ -139,12 +145,12 @@ async def test_search_worker_success_builds_sources(monkeypatch):
         ],
         answer="官方摘要",
     )
-    monkeypatch.setattr(agents, "web_search", lambda query: outcome)
+    monkeypatch.setattr(search_skill, "web_search", lambda query: outcome)
     fake = FakeChatModel(answer="根据搜索结果")
-    monkeypatch.setattr(agents, "get_chat_model", lambda: fake)
+    monkeypatch.setattr(search_skill, "get_chat_model", lambda: fake)
 
     state = {"messages": [HumanMessage(content="最新新闻")]}
-    result = await agents.search_worker(state)
+    result = await search_skill.skill.run(state)
 
     assert fake.invoked is True
     assert result["messages"][0].content == "根据搜索结果"
@@ -159,15 +165,15 @@ async def test_search_worker_success_builds_sources(monkeypatch):
     assert len(sources[1]["content"]) == 300  # 截断
 
 
-# ============ chat_worker ============
+# ============ chat 技能 ============
 
 
-async def test_chat_worker_returns_answer_no_sources(monkeypatch):
+async def test_chat_skill_returns_answer_no_sources(monkeypatch):
     fake = FakeChatModel(answer="你好，很高兴帮你")
-    monkeypatch.setattr(agents, "get_chat_model", lambda: fake)
+    monkeypatch.setattr(chat_skill, "get_chat_model", lambda: fake)
 
     state = {"messages": [HumanMessage(content="你好")]}
-    result = await agents.chat_worker(state)
+    result = await chat_skill.skill.run(state)
 
     assert fake.invoked is True
     assert result["messages"][0].content == "你好，很高兴帮你"

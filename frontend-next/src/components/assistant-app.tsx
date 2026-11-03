@@ -9,6 +9,7 @@ import { ChatPanel } from "@/components/chat/chat-panel";
 import { SessionSidebar } from "@/components/chat/session-sidebar";
 import { KnowledgePanel } from "@/components/knowledge/knowledge-panel";
 import { ServiceStatus } from "@/components/service-status";
+import { SkillsPanel } from "@/components/skills/skills-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilesQuery, useHealthQuery } from "@/hooks/queries";
 import { useMounted } from "@/hooks/use-mounted";
@@ -85,6 +86,7 @@ export function AssistantApp() {
           <aside className="flex flex-col gap-4">
             <ServiceStatus query={healthQuery} />
             <KnowledgePanel />
+            <SkillsPanel />
           </aside>
         </div>
       </main>

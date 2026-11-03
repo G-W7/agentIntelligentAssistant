@@ -71,14 +71,24 @@ def test_chat_response_defaults():
     assert resp.sources == []
 
 
-def test_chat_response_rejects_invalid_route():
-    with pytest.raises(ValidationError):
-        ChatResponse(session_id="s1", route="unknown", answer="hi")
+def test_chat_response_accepts_any_route():
+    # Route 已放宽为 str：路由目标由技能注册表动态决定，任意字符串都合法。
+    resp = ChatResponse(session_id="s1", route="custom_skill", answer="hi")
+    assert resp.route == "custom_skill"
 
 
 def test_source_item_rejects_invalid_kind():
     with pytest.raises(ValidationError):
         SourceItem(kind="other")
+
+
+def test_source_item_tool_defaults():
+    # kind="tool" 为 MCP 工具来源；tool_name 承载工具名，其余字段沿用默认。
+    item = SourceItem(kind="tool", tool_name="read_file")
+    assert item.kind == "tool"
+    assert item.tool_name == "read_file"
+    assert item.index is None
+    assert item.content == ""
 
 
 def test_source_item_defaults():

@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FileText,
   Link2,
+  Wrench,
 } from "lucide-react";
 
 import {
@@ -103,6 +104,41 @@ function WebSource({ source }: { source: SourceItem }) {
   );
 }
 
+function ToolSource({ source }: { source: SourceItem }) {
+  const label = source.tool_name?.trim() || "工具调用";
+
+  return (
+    <li className="rounded-md border border-border/60 bg-background/70 p-2.5">
+      <div className="flex items-start gap-2">
+        <Wrench className="mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            {typeof source.index === "number" ? (
+              <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+                [{source.index}]
+              </span>
+            ) : null}
+            <span
+              className="truncate text-xs font-medium text-foreground"
+              title={label}
+            >
+              {label}
+            </span>
+          </div>
+          {source.content ? (
+            <p
+              className="mt-1 line-clamp-2 break-words text-[11px] leading-5 text-muted-foreground"
+              title={source.content}
+            >
+              {source.content}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 export function SourcesList({
   sources,
   fileNames,
@@ -128,22 +164,33 @@ export function SourcesList({
         <ChevronDown className="ml-auto size-3.5 transition-transform duration-200 group-open:rotate-180" />
       </summary>
       <ol className="mt-2 space-y-1.5">
-        {sources.map((source, index) =>
-          source.kind === "knowledge" ? (
-            <KnowledgeSource
-              key={`knowledge-${source.file_id ?? "unknown"}-${source.page ?? "no-page"}-${index}`}
-              source={source}
-              fileName={
-                source.file_id ? fileNames.get(source.file_id) : undefined
-              }
-            />
-          ) : (
+        {sources.map((source, index) => {
+          if (source.kind === "knowledge") {
+            return (
+              <KnowledgeSource
+                key={`knowledge-${source.file_id ?? "unknown"}-${source.page ?? "no-page"}-${index}`}
+                source={source}
+                fileName={
+                  source.file_id ? fileNames.get(source.file_id) : undefined
+                }
+              />
+            );
+          }
+          if (source.kind === "tool") {
+            return (
+              <ToolSource
+                key={`tool-${source.index ?? index}-${source.tool_name ?? "tool"}`}
+                source={source}
+              />
+            );
+          }
+          return (
             <WebSource
               key={`web-${source.index ?? index}-${source.url ?? "no-url"}`}
               source={source}
             />
-          ),
-        )}
+          );
+        })}
       </ol>
     </details>
   );

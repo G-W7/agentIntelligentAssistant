@@ -11,6 +11,8 @@ from app.api.endpoints import router
 from app.config import get_settings
 from app.core import observability
 from app.db import milvus_client, pg_client
+from app.skills import mcp as mcp_skill
+from app.skills import registry
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,21 @@ async def lifespan(app: FastAPI):
         level=logging.DEBUG if settings.debug else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s | %(message)s",
     )
+
+    # 发现并注册 app/skills/ 下的技能（内置 + 自定义 + MCP），使面板与路由即时可用；
+    # 失败只告警不中断，保证 /docs 与 /api/health 始终可访问。
+    try:
+        registry.discover()
+    except Exception:
+        logger.warning("技能发现失败，Agent 图可能缺少工作者", exc_info=True)
+
+    # 预热 MCP：拉一次工具列表并把工具名/简介写回 mcp 技能的 description，
+    # 让主管路由 Prompt 能感知具体工具，避免「今天几号」被误判给 search。
+    # 失败只告警不中断：description 保持静态兜底文案，其它技能不受影响。
+    try:
+        await mcp_skill.warm_up()
+    except Exception:
+        logger.warning("MCP 工具预热失败，路由描述可能不够精确", exc_info=True)
 
     # 依赖服务未就绪时只告警不中断启动，保证 /docs 与 /api/health 始终可访问
     try:

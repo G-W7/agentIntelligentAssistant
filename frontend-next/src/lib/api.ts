@@ -15,7 +15,9 @@ import type {
   FileItem,
   HealthResponse,
   HistoryItem,
+  McpStatusResponse,
   SessionItem,
+  SkillInfo,
   TokenResponse,
   UploadResponse,
   User,
@@ -210,6 +212,14 @@ async function* parseSse(
 export const api = {
   health(signal?: AbortSignal): Promise<HealthResponse> {
     return request<HealthResponse>("/health", { signal }, 15_000);
+  },
+
+  skills(signal?: AbortSignal): Promise<SkillInfo[]> {
+    return request<SkillInfo[]>("/skills", { signal }, 15_000);
+  },
+
+  mcpStatus(signal?: AbortSignal): Promise<McpStatusResponse> {
+    return request<McpStatusResponse>("/mcp/status", { signal }, 30_000);
   },
 
   files(signal?: AbortSignal): Promise<FileItem[]> {

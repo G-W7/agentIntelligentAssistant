@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # MinerU 文档解析
     mineru_token: str = ""
 
+    # MCP 工具接入（可选）：配置 mcp.json 后由 mcp 技能通过 ReAct 调用外部工具
+    mcp_enabled: bool = True
+    mcp_config_path: Path = PROJECT_ROOT / "mcp.json"
+
     # PostgreSQL
     postgres_host: str = "localhost"
     postgres_port: int = 5432

@@ -1,6 +1,7 @@
 /** 与后端 app/models/schemas.py 保持一致的类型契约。 */
 
-export type Route = "rag" | "chat" | "search";
+/** 路由目标由后端技能注册表动态决定，故为任意字符串（不再是固定字面量）。 */
+export type Route = string;
 
 export type ChatRole = "user" | "assistant";
 
@@ -22,12 +23,13 @@ export interface AuthPayload {
 }
 
 export interface SourceItem {
-  kind: "knowledge" | "web";
+  kind: "knowledge" | "web" | "tool";
   title?: string | null;
   url?: string | null;
   file_id?: string | null;
   page?: number | null;
   index?: number | null;
+  tool_name?: string | null;
   score: number;
   content?: string;
 }
@@ -93,6 +95,33 @@ export interface HealthResponse {
   milvus: boolean;
   milvus_vectors: number;
   knowledge_files: number;
+}
+
+/** 后端注册表中发现的技能（只读展示），与 SkillInfo 对齐。 */
+export interface SkillInfo {
+  name: string;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  kind: string;
+  enabled: boolean;
+}
+
+/** MCP 服务暴露的单个工具，与 McpToolInfo 对齐。 */
+export interface McpToolInfo {
+  name: string;
+  description: string;
+  server: string;
+}
+
+/** MCP 接入状态，与 McpStatusResponse 对齐。 */
+export interface McpStatusResponse {
+  configured: boolean;
+  enabled: boolean;
+  servers: string[];
+  tools: McpToolInfo[];
+  error: string | null;
 }
 
 /** 前端统一使用的消息模型：历史消息与本次新消息共用。 */
