@@ -164,15 +164,15 @@ def list_sessions(
 
 
 @router.delete("/sessions/{session_id}", response_model=DeleteSessionResponse, summary="删除指定会话")
-def delete_session(
+async def delete_session(
     session_id: str,
     current_user: dict[str, Any] = Depends(get_current_user),
 ) -> DeleteSessionResponse:
-    """删除会话接口：清除该会话全部聊天记录。
+    """删除会话接口：清除该会话全部聊天记录与 Checkpointer 状态。
 
     会话不存在（无消息）返回 404。
     """
-    result = chat_service.delete_session(session_id, current_user["id"])
+    result = await chat_service.delete_session(session_id, current_user["id"])
     if result["deleted_messages"] == 0:
         raise HTTPException(status_code=404, detail=f"会话 {session_id} 不存在或无消息")
     return DeleteSessionResponse(**result)

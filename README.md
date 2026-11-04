@@ -14,7 +14,7 @@
 - **RAG 知识库问答**：文档经 MinerU 结构化解析 → Markdown 分层切片 → DashScope 向量化 → 写入 Milvus，回答严格标注 `[片段N]` 来源，杜绝编造。
 - **混合检索 + 重排序**：Milvus BM25 稀疏向量 + 稠密向量加权融合粗召回，再由 `qwen3-rerank` 精排取 Top-K；rerank 异常时自动降级为原始排序。
 - **联网搜索**：集成 Tavily 实时检索，回答标注 `[N]` 引用序号，来源可点击跳转。
-- **双层会话记忆**：LangGraph `MemorySaver` 维持进程内多轮上下文，PostgreSQL `chat_history` 负责跨重启持久化与前端历史展示，并按 `user_id` 隔离。
+- **持久化会话记忆**：LangGraph Checkpointer（默认 `PostgresSaver`）将多轮上下文持久化到 PostgreSQL，**支持多进程 / 多实例部署**共享同一会话状态；`chat_history` 负责前端历史展示与迁移前旧会话的上下文重建，均按 `user_id` 隔离。（`CHECKPOINT_BACKEND=memory` 可降级为进程内 `MemorySaver`，仅单实例、重启丢失）
 - **流式输出**：`/api/chat/stream` 以 SSE 逐 token 推送，实时反馈路由判定、增量回答与参考来源。
 - **JWT 认证**：bcrypt 哈希密码 + PyJWT 签发令牌，知识库检索按用户隔离。
 - **可观测性**：可选接入 Langfuse，追踪路由准确率与调用链路（未启用时退化为 no-op）。
@@ -53,9 +53,9 @@
   └────┬────┘
        │
        ▼
-  ┌────────────────────────┐
-  │ PostgreSQL (用户/历史/文件) │
-  └────────────────────────┘
+  ┌──────────────────────────┐
+  │ PostgreSQL (用户/历史/文件/会话状态) │
+  └──────────────────────────┘
 ```
 
 **Agent 图拓扑**：`START → router →(条件分发)→ 各已启用技能（rag / search / chat / weather / mcp …）→ END`。工作者节点、条件边与主管路由 Prompt 均由技能注册表在运行时动态生成。
@@ -68,7 +68,7 @@
 | --- | --- |
 | 语言 / 运行时 | Python 3.13+ · Node.js 20+ |
 | Web 框架 | FastAPI · Uvicorn |
-| Agent 编排 | LangChain · LangGraph |
+| Agent 编排 | LangChain · LangGraph（`PostgresSaver` Checkpointer 持久化会话状态） |
 | 技能 / 工具 | 可插拔技能注册表 · MCP（`langchain-mcp-adapters` + ReAct 工具调用） |
 | LLM | DeepSeek（`deepseek-flash`，OpenAI 兼容接口） |
 | Embedding / Rerank | 千问 DashScope（`qwen3-text-embedding` / `qwen3-rerank`） |
@@ -117,6 +117,7 @@ agentIntelligentAssistant/
 │   │   └── knowledge_service.py#   文件上传 / 列表 / 删除
 │   ├── db/                     # 数据访问
 │   │   ├── pg_client.py        #   PostgreSQL 连接池与建表
+│   │   ├── checkpointer.py     #   LangGraph Checkpointer（PostgresSaver，多实例共享会话状态）
 │   │   └── milvus_client.py    #   Milvus collection 与混合检索
 │   ├── models/schemas.py       # Pydantic 请求 / 响应模型
 │   ├── config.py               # 全局配置（.env 注入）
@@ -157,7 +158,7 @@ docker-compose up -d
 | etcd | 2379 | Milvus 元数据协调 |
 | RustFS（对象存储） | 9000 / 9001 | Milvus 底层存储，控制台 9001 |
 | Milvus | 19530 / 9091 | 向量数据库 |
-| PostgreSQL | 5432 | 关系数据库（用户 / 历史 / 文件） |
+| PostgreSQL | 5432 | 关系数据库（用户 / 历史 / 文件 / 会话 checkpoint） |
 | Attu | 3000 | Milvus 可视化管理界面 |
 
 ### 3. 配置环境变量
@@ -238,7 +239,7 @@ cp mcp.example.json mcp.json
 | POST | `/api/upload` | 上传知识库文件，落盘 + 解析 + 切片 + 向量化 |
 | GET | `/api/history` | 获取指定会话历史消息 |
 | GET | `/api/sessions` | 获取当前用户会话列表（最近活跃倒序） |
-| DELETE | `/api/sessions/{session_id}` | 删除指定会话全部记录 |
+| DELETE | `/api/sessions/{session_id}` | 删除指定会话全部记录与 checkpoint 状态 |
 | GET | `/api/files` | 获取已上传文件列表及处理状态 |
 | DELETE | `/api/files/{file_id}` | 级联删除文件向量、元数据与磁盘文件 |
 | GET | `/api/skills` | 列出注册表中已发现的可用技能（前端只读展示） |
@@ -300,7 +301,8 @@ cp mcp.example.json mcp.json
 | `MILVUS_TOP_K` | `4` | 最终返回切片数 |
 | `MILVUS_SPARSE_WEIGHT` / `MILVUS_DENSE_WEIGHT` | `0.3` / `0.7` | 混合检索权重（和建议为 1） |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `1200` / `240` | 切片大小与重叠 |
-| `HISTORY_WINDOW` | `20` | 灌入上下文的历史消息条数 |
+| `HISTORY_WINDOW` | `20` | 无 checkpoint 时从 `chat_history` 灌入的历史条数（迁移 / 重建上下文） |
+| `CHECKPOINT_BACKEND` | `postgres` | 会话状态存储：`postgres` 持久化到 PG（多实例共享）/ `memory` 进程内（单实例、重启丢失） |
 | `MAX_UPLOAD_MB` | `20` | 单文件上传上限 |
 | `MCP_ENABLED` | `true` | 是否启用 MCP 工具技能（还需配置 `mcp.json`） |
 | `LANGFUSE_ENABLED` | `false` | 是否启用 Langfuse 追踪 |
@@ -311,6 +313,7 @@ cp mcp.example.json mcp.json
 
 - **上传格式白名单**：`.pdf .md .markdown .txt .docx .pptx .xlsx .png .jpg .jpeg`。
 - **用户隔离**：知识库检索与会话历史均按 `user_id` 过滤，`thread_id` 拼接 `user_id` 防止跨用户上下文泄露。
+- **会话状态持久化**：默认 `PostgresSaver` 把 LangGraph checkpoint 存入 PostgreSQL，多实例部署时同一会话可落到任意实例恢复上下文；checkpoint 表由启动时 `setup()` 幂等创建，删除会话会一并清除对应 checkpoint。checkpointer 使用独立的 psycopg 3 连接池（与 `pg_client` 的 psycopg2 池并存）。
 - **维度变更**：修改 `EMBEDDING_DIMENSIONS` 后需删除并重建 Milvus collection。
 - **Gradio 前端**：`frontend/gradio_app.py` 为轻量备用界面，主推 `frontend-next`。
 - **MCP 配置**：`mcp.json` 已在 `.gitignore` 中忽略，仅 `mcp.example.json` 入库；工具列表进程内缓存，改动配置后需重启后端生效。

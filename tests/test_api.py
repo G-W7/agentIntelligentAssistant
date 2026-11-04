@@ -288,22 +288,20 @@ def test_list_sessions(client, auth_headers, monkeypatch):
 
 
 def test_delete_session_ok(client, auth_headers, monkeypatch):
-    monkeypatch.setattr(
-        chat_service,
-        "delete_session",
-        lambda sid, uid: {"session_id": sid, "deleted_messages": 2},
-    )
+    async def fake_delete(sid, uid):
+        return {"session_id": sid, "deleted_messages": 2}
+
+    monkeypatch.setattr(chat_service, "delete_session", fake_delete)
     resp = client.delete("/api/sessions/s1", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["deleted_messages"] == 2
 
 
 def test_delete_session_not_found(client, auth_headers, monkeypatch):
-    monkeypatch.setattr(
-        chat_service,
-        "delete_session",
-        lambda sid, uid: {"session_id": sid, "deleted_messages": 0},
-    )
+    async def fake_delete(sid, uid):
+        return {"session_id": sid, "deleted_messages": 0}
+
+    monkeypatch.setattr(chat_service, "delete_session", fake_delete)
     resp = client.delete("/api/sessions/empty", headers=auth_headers)
     assert resp.status_code == 404
 

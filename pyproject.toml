@@ -19,9 +19,13 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "langchain-text-splitters>=0.3.0",
     "langgraph>=0.2.0",
+    # LangGraph Checkpointer 持久化到 PostgreSQL（多实例共享会话状态）
+    "langgraph-checkpoint-postgres>=2.0.0",
     # 存储
     "pymilvus>=2.6.0,<2.7.0",
     "psycopg2-binary>=2.9.10",
+    # psycopg 3：langgraph-checkpoint-postgres 依赖（含连接池 psycopg-pool）
+    "psycopg[binary,pool]>=3.1",
     # 认证
     "bcrypt>=4.0",
     "pyjwt>=2.8.0",

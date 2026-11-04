@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -65,6 +66,12 @@ class Settings(BaseSettings):
     postgres_db: str = "postgres"
     postgres_pool_size: int = 8
 
+    # LangGraph Checkpointer 后端：
+    #   postgres —— 会话状态持久化到 PostgreSQL，支持多进程 / 多实例共享（默认）
+    #   memory   —— 进程内 MemorySaver，仅单实例且重启丢失，供本地开发 / 测试降级
+    # 复用 postgres_* 连接参数；checkpointer 使用独立的 psycopg3 连接池。
+    checkpoint_backend: Literal["postgres", "memory"] = "postgres"
+
     # Milvus
     milvus_host: str = "localhost"
     milvus_port: int = 19530
@@ -102,7 +109,7 @@ class Settings(BaseSettings):
 
     @property
     def postgres_dsn(self) -> str:
-        """拼接 psycopg2 可用的 PostgreSQL 连接串。"""
+        """拼接 PostgreSQL 连接串（key=value 形式，psycopg2 与 psycopg3 均可用）。"""
         return (
             f"host={self.postgres_host} port={self.postgres_port} "
             f"user={self.postgres_user} password={self.postgres_password} "

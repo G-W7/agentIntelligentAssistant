@@ -10,7 +10,7 @@ from app.api.auth import router as auth_router
 from app.api.endpoints import router
 from app.config import get_settings
 from app.core import observability
-from app.db import milvus_client, pg_client
+from app.db import checkpointer, milvus_client, pg_client
 from app.skills import mcp as mcp_skill
 from app.skills import registry
 
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期钩子。
 
-    启动阶段：配置日志 → 初始化 PostgreSQL 建表 → 初始化 Milvus collection
-    → 创建上传目录；关闭阶段：释放 PG 连接池。
+    启动阶段：配置日志 → 初始化 PostgreSQL 建表 → 初始化 Checkpointer
+    → 初始化 Milvus collection → 创建上传目录；关闭阶段：释放 Checkpointer 与 PG 连接池。
     """
     settings = get_settings()
     logging.basicConfig(
@@ -51,6 +51,13 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.warning("PostgreSQL 初始化失败，历史与知识库接口将返回 503", exc_info=True)
 
+    # 初始化 LangGraph Checkpointer（默认 AsyncPostgresSaver）：必须在事件循环内
+    # 且早于任何 get_graph() 调用，以便图编译时拿到已就绪的共享单例；失败自动回退 MemorySaver。
+    try:
+        await checkpointer.init_checkpointer()
+    except Exception:
+        logger.warning("Checkpointer 初始化失败，多轮上下文可能不可用", exc_info=True)
+
     try:
         milvus_client.init_collection()
     except Exception:
@@ -61,6 +68,7 @@ async def lifespan(app: FastAPI):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     yield
     observability.shutdown_langfuse()
+    await checkpointer.close_checkpointer()
     pg_client.close_db()
     milvus_client.close_client()
 

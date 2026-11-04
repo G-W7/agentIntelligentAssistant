@@ -3,8 +3,11 @@
 只覆盖不触发真实 Agent 图 / PostgreSQL 的部分：
 - _text_of：字符串与多模态分块两种 content 形态；
 - _load_history：把数据库行还原为 LangChain 消息对象（mock pg_client）；
-- history / delete_session / list_sessions：透传层（mock pg_client）。
+- _prepare_session：根据 checkpoint 是否存在决定是否灌历史 seed（mock 图与 pg_client）；
+- history / delete_session / list_sessions：透传层（mock pg_client / checkpointer）。
 """
+
+from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -72,6 +75,50 @@ def test_load_history_empty(monkeypatch):
     assert chat_service._load_history("s1", "u1") == []
 
 
+# ---------- _prepare_session ----------
+
+
+class _FakeGraph:
+    """假图：aget_state 返回一个含指定 messages 的状态快照。"""
+
+    def __init__(self, messages):
+        self._messages = messages
+
+    async def aget_state(self, config):
+        return SimpleNamespace(values={"messages": self._messages})
+
+
+async def test_prepare_session_seeds_when_no_checkpoint(monkeypatch):
+    # 无 checkpoint（全新 / 迁移前旧会话）：应从 PG 灌历史作为 seed
+    monkeypatch.setattr(
+        chat_service, "_load_history", lambda sid, uid: [HumanMessage(content="旧消息")]
+    )
+    saved = []
+    monkeypatch.setattr(
+        chat_service.pg_client, "save_message", lambda *a, **k: saved.append(a)
+    )
+
+    graph = _FakeGraph(messages=[])
+    seed = await chat_service._prepare_session(graph, {}, "s1", "u1", "新问题")
+
+    assert [m.content for m in seed] == ["旧消息"]
+    # 本轮用户消息已落库
+    assert saved and saved[0][1] == "user" and saved[0][2] == "新问题"
+
+
+async def test_prepare_session_skips_seed_when_checkpoint_exists(monkeypatch):
+    # 已有 checkpoint：不应重复灌历史（否则与恢复状态重复）
+    monkeypatch.setattr(
+        chat_service, "_load_history", lambda sid, uid: [HumanMessage(content="不该被用")]
+    )
+    monkeypatch.setattr(chat_service.pg_client, "save_message", lambda *a, **k: None)
+
+    graph = _FakeGraph(messages=[HumanMessage(content="已有状态")])
+    seed = await chat_service._prepare_session(graph, {}, "s1", "u1", "新问题")
+
+    assert seed == []
+
+
 # ---------- 透传层 ----------
 
 
@@ -83,10 +130,33 @@ def test_history_delegates_to_pg(monkeypatch):
     assert chat_service.history("s1", "u1", limit=10) == rows
 
 
-def test_delete_session_returns_count(monkeypatch):
+async def test_delete_session_returns_count_and_clears_checkpoint(monkeypatch):
     monkeypatch.setattr(chat_service.pg_client, "delete_session", lambda sid, uid: 3)
-    result = chat_service.delete_session("s1", "u1")
+    deleted_threads = []
+
+    async def fake_adelete_thread(thread_id):
+        deleted_threads.append(thread_id)
+
+    monkeypatch.setattr(chat_service.checkpointer, "adelete_thread", fake_adelete_thread)
+
+    result = await chat_service.delete_session("s1", "u1")
+
     assert result == {"session_id": "s1", "deleted_messages": 3}
+    # checkpoint 按 user_id:session_id 拼接的 thread 一并清理
+    assert deleted_threads == ["u1:s1"]
+
+
+async def test_delete_session_survives_checkpoint_error(monkeypatch):
+    # checkpoint 清理失败不应影响历史记录的删除结果
+    monkeypatch.setattr(chat_service.pg_client, "delete_session", lambda sid, uid: 2)
+
+    async def boom(thread_id):
+        raise RuntimeError("pool closed")
+
+    monkeypatch.setattr(chat_service.checkpointer, "adelete_thread", boom)
+
+    result = await chat_service.delete_session("s1", "u1")
+    assert result == {"session_id": "s1", "deleted_messages": 2}
 
 
 def test_list_sessions_delegates_to_pg(monkeypatch):

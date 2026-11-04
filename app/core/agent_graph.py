@@ -9,10 +9,10 @@ import logging
 from functools import lru_cache
 from typing import Any
 
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.core.agents import AgentState, router_node
+from app.db.checkpointer import get_checkpointer
 from app.skills import registry
 
 logger = logging.getLogger(__name__)
@@ -50,9 +50,10 @@ def get_graph() -> Any:
     for node in nodes.values():
         builder.add_edge(node, END)
 
-    # MemorySaver 只在进程存活期间保留状态，跨重启的多轮记忆由
-    # PostgreSQL chat_history 兜底（见 chat_service）。需要真正的断点续传时，
-    # 换成 langgraph-checkpoint-postgres 的 PostgresSaver（依赖 psycopg 3）。
-    graph = builder.compile(checkpointer=MemorySaver())
+    # Checkpointer 由 app.db.checkpointer 统一提供：默认 AsyncPostgresSaver，把会话
+    # 状态持久化到 PostgreSQL，使多进程 / 多实例部署时同一 thread 落到任意实例都能
+    # 恢复多轮上下文；PostgreSQL 不可用时回退进程内 MemorySaver（仅单实例、重启丢失）。
+    # 跨重启的持久化记忆与前端展示仍由 chat_history 兜底（见 chat_service）。
+    graph = builder.compile(checkpointer=get_checkpointer())
     logger.info("Agent 图已编译：router → %s", ", ".join(nodes))
     return graph
